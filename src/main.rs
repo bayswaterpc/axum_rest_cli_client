@@ -1,66 +1,74 @@
+//! Provides a RESTful web server managing some Todos.
+//!
+//! API will be:
+//!
+//! - `GET /todos`: return a JSON list of Todos.
+//! - `POST /todos`: create a new Todo.
+//! - `PATCH /todos/:id`: update a specific Todo.
+//! - `DELETE /todos/:id`: delete a specific Todo.
+//!
 //! Run with
 //!
 //! ```not_rust
-//! cd examples && cargo run -p example-tracing-aka-logging
+//! cd examples && cargo run -p example-todos
 //! ```
 
 use axum::{
-    body::Bytes,
-    http::{HeaderMap, Request},
-    response::{Html, Response},
-    routing::get,
-    Router,
+    error_handling::HandleErrorLayer,
+    extract::{Extension, Path, Query},
+    http::StatusCode,
+    response::IntoResponse,
+    routing::{get, patch},
+    Json, Router,
 };
-use std::{net::SocketAddr, time::Duration};
-use tower_http::{classify::ServerErrorsFailureClass, trace::TraceLayer};
-use tracing::Span;
+use serde::{Deserialize, Serialize};
+use std::{
+    collections::HashMap,
+    net::SocketAddr,
+    sync::{Arc, RwLock},
+    time::Duration,
+};
+use tower::{BoxError, ServiceBuilder};
+use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use uuid::Uuid;
 
 #[tokio::main]
 async fn main() {
     tracing_subscriber::registry()
         .with(tracing_subscriber::EnvFilter::new(
             std::env::var("RUST_LOG")
-                .unwrap_or_else(|_| "example_tracing_aka_logging=debug,tower_http=debug".into()),
+                .unwrap_or_else(|_| "example_todos=debug,tower_http=debug".into()),
         ))
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    // build our application with a route
+    let db = Db::default();
+
+    // Compose the routes
     let app = Router::new()
-        .route("/", get(handler))
-        // `TraceLayer` is provided by tower-http so you have to add that as a dependency.
-        // It provides good defaults but is also very customizable.
-        //
-        // See https://docs.rs/tower-http/0.1.1/tower_http/trace/index.html for more details.
-        .layer(TraceLayer::new_for_http())
-        // If you want to customize the behavior using closures here is how
-        //
-        // This is just for demonstration, you don't need to add this middleware twice
+        .route("/", get(root))
+        .route("/todos", get(todos_index).post(todos_create))
+        .route("/todos/:id", patch(todos_update).delete(todos_delete))
+        // Add middleware to all routes
         .layer(
-            TraceLayer::new_for_http()
-                .on_request(|_request: &Request<_>, _span: &Span| {
-                    tracing::debug!("on_request {:?}", _request);
-                })
-                .on_response(|_response: &Response, _latency: Duration, _span: &Span| {
-                    tracing::debug!("on_response {:?}", _response);
-                })
-                .on_body_chunk(|_chunk: &Bytes, _latency: Duration, _span: &Span| {
-                     tracing::debug!("on_body_chunk {:?}", _chunk);
-                })
-                .on_eos(
-                    |_trailers: Option<&HeaderMap>, _stream_duration: Duration, _span: &Span| {
-                        tracing::debug!("on_eos {:?}", _span);
-                    },
-                )
-                .on_failure(
-                    |_error: ServerErrorsFailureClass, _latency: Duration, _span: &Span| {
-                        tracing::debug!("on_failure {:?}", _span);
-                    },
-                ),
+            ServiceBuilder::new()
+                .layer(HandleErrorLayer::new(|error: BoxError| async move {
+                    if error.is::<tower::timeout::error::Elapsed>() {
+                        Ok(StatusCode::REQUEST_TIMEOUT)
+                    } else {
+                        Err((
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            format!("Unhandled internal error: {}", error),
+                        ))
+                    }
+                }))
+                .timeout(Duration::from_secs(10))
+                .layer(TraceLayer::new_for_http())
+                .layer(Extension(db))
+                .into_inner(),
         );
 
-    // run it
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
     tracing::debug!("listening on {}", addr);
     axum::Server::bind(&addr)
@@ -69,6 +77,136 @@ async fn main() {
         .unwrap();
 }
 
-async fn handler() -> Html<&'static str> {
-    Html("<h1>Hello, World!</h1>")
+
+/**
+Can access on the browser at
+```not_rust
+http://localhost:3000/todos
+```
+```not_rust
+http://localhost:3000/todos?offset=1&limit=1
+```
+
+or with run with curl
+```not_rust
+curl -X GET "http://localhost:3000/todos?offset=1&limit=1"
+```
+**/
+#[derive(Debug, Deserialize, Default)]
+pub struct Pagination {
+    pub offset: Option<usize>,
+    pub limit: Option<usize>,
+}
+
+async fn todos_index(
+    pagination: Option<Query<Pagination>>,
+    Extension(db): Extension<Db>,
+) -> impl IntoResponse {
+    tracing::debug!("getting");
+    let todos = db.read().unwrap();
+
+    let Query(pagination) = pagination.unwrap_or_default();
+
+    let todos = todos
+        .values()
+        .skip(pagination.offset.unwrap_or(0))
+        .take(pagination.limit.unwrap_or(usize::MAX))
+        .cloned()
+        .collect::<Vec<_>>();
+
+    Json(todos)
+}
+
+async fn root() -> &'static str {
+    "Hello, World!"
+}
+
+#[derive(Debug, Deserialize)]
+struct CreateTodo {
+    text: String,
+}
+
+/**
+Run with curl
+```not_rust
+curl -X PATCH http://localhost:3000/todos/:id \
+   -H 'Content-Type: application/json' \
+   -d '{"text":"do this"}'
+```
+**/
+async fn todos_create(
+    Json(input): Json<CreateTodo>,
+    Extension(db): Extension<Db>,
+) -> impl IntoResponse {
+    let todo = Todo {
+        id: Uuid::new_v4(),
+        text: input.text,
+        completed: false,
+    };
+
+    db.write().unwrap().insert(todo.id, todo.clone());
+
+    (StatusCode::CREATED, Json(todo))
+}
+
+#[derive(Debug, Deserialize)]
+struct UpdateTodo {
+    text: Option<String>,
+    completed: Option<bool>,
+}
+
+/**
+```not_rust
+curl -X PATCH "http://localhost:3000/todos/:id" \
+   -H 'Content-Type: application/json' \
+   -d '{"text":"did it","completed":true}'
+```
+**/
+async fn todos_update(
+    Path(id): Path<Uuid>,
+    Json(input): Json<UpdateTodo>,
+    Extension(db): Extension<Db>,
+) -> Result<impl IntoResponse, StatusCode> {
+    tracing::debug!("parsing {:?}", input);
+    let mut todo = db
+        .read()
+        .unwrap()
+        .get(&id)
+        .cloned()
+        .ok_or(StatusCode::NOT_FOUND)?;
+
+    if let Some(text) = input.text {
+        todo.text = text;
+    }
+
+    if let Some(completed) = input.completed {
+        todo.completed = completed;
+    }
+
+    db.write().unwrap().insert(todo.id, todo.clone());
+
+    Ok(Json(todo))
+}
+
+/** 
+Run with curl 
+```not_rust
+curl -X "DELETE" http://localhost:3000/todos/:id \
+```
+**/
+async fn todos_delete(Path(id): Path<Uuid>, Extension(db): Extension<Db>) -> impl IntoResponse {
+    if db.write().unwrap().remove(&id).is_some() {
+        StatusCode::NO_CONTENT
+    } else {
+        StatusCode::NOT_FOUND
+    }
+}
+
+type Db = Arc<RwLock<HashMap<Uuid, Todo>>>;
+
+#[derive(Debug, Serialize, Clone)]
+struct Todo {
+    id: Uuid,
+    text: String,
+    completed: bool,
 }
