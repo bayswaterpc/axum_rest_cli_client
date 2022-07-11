@@ -78,11 +78,19 @@ async fn main() {
 }
 
 
+
+#[derive(Debug, Deserialize, Default)]
+pub struct Pagination {
+    pub offset: Option<usize>,
+    pub limit: Option<usize>,
+}
+
 /**
 Can access on the browser at
 ```not_rust
 http://localhost:3000/todos
 ```
+with options
 ```not_rust
 http://localhost:3000/todos?offset=1&limit=1
 ```
@@ -92,12 +100,6 @@ or with run with curl
 curl -X GET "http://localhost:3000/todos?offset=1&limit=1"
 ```
 **/
-#[derive(Debug, Deserialize, Default)]
-pub struct Pagination {
-    pub offset: Option<usize>,
-    pub limit: Option<usize>,
-}
-
 async fn todos_index(
     pagination: Option<Query<Pagination>>,
     Extension(db): Extension<Db>,
@@ -191,7 +193,7 @@ async fn todos_update(
 /** 
 Run with curl 
 ```not_rust
-curl -X "DELETE" http://localhost:3000/todos/:id \
+curl -X "DELETE" http://localhost:3000/todos/:id
 ```
 **/
 async fn todos_delete(Path(id): Path<Uuid>, Extension(db): Extension<Db>) -> impl IntoResponse {
