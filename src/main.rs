@@ -1,32 +1,66 @@
 //! Run with
 //!
 //! ```not_rust
-//! cd examples && cargo run -p example-readme
+//! cd examples && cargo run -p example-tracing-aka-logging
 //! ```
 
 use axum::{
-    http::StatusCode,
-    response::IntoResponse,
-    routing::{get, post},
-    Json, Router,
+    body::Bytes,
+    http::{HeaderMap, Request},
+    response::{Html, Response},
+    routing::get,
+    Router,
 };
-use serde::{Deserialize, Serialize};
-use std::net::SocketAddr;
+use std::{net::SocketAddr, time::Duration};
+use tower_http::{classify::ServerErrorsFailureClass, trace::TraceLayer};
+use tracing::Span;
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tokio::main]
 async fn main() {
-    // initialize tracing
-    tracing_subscriber::fmt::init();
+    tracing_subscriber::registry()
+        .with(tracing_subscriber::EnvFilter::new(
+            std::env::var("RUST_LOG")
+                .unwrap_or_else(|_| "example_tracing_aka_logging=debug,tower_http=debug".into()),
+        ))
+        .with(tracing_subscriber::fmt::layer())
+        .init();
 
     // build our application with a route
     let app = Router::new()
-        // `GET /` goes to `root`
-        .route("/", get(root))
-        // `POST /users` goes to `create_user`
-        .route("/users", post(create_user));
+        .route("/", get(handler))
+        // `TraceLayer` is provided by tower-http so you have to add that as a dependency.
+        // It provides good defaults but is also very customizable.
+        //
+        // See https://docs.rs/tower-http/0.1.1/tower_http/trace/index.html for more details.
+        .layer(TraceLayer::new_for_http())
+        // If you want to customize the behavior using closures here is how
+        //
+        // This is just for demonstration, you don't need to add this middleware twice
+        .layer(
+            TraceLayer::new_for_http()
+                .on_request(|_request: &Request<_>, _span: &Span| {
+                    tracing::debug!("on_request {:?}", _request);
+                })
+                .on_response(|_response: &Response, _latency: Duration, _span: &Span| {
+                    tracing::debug!("on_response {:?}", _response);
+                })
+                .on_body_chunk(|_chunk: &Bytes, _latency: Duration, _span: &Span| {
+                     tracing::debug!("on_body_chunk {:?}", _chunk);
+                })
+                .on_eos(
+                    |_trailers: Option<&HeaderMap>, _stream_duration: Duration, _span: &Span| {
+                        tracing::debug!("on_eos {:?}", _span);
+                    },
+                )
+                .on_failure(
+                    |_error: ServerErrorsFailureClass, _latency: Duration, _span: &Span| {
+                        tracing::debug!("on_failure {:?}", _span);
+                    },
+                ),
+        );
 
-    // run our app with hyper
-    // `axum::Server` is a re-export of `hyper::Server`
+    // run it
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
     tracing::debug!("listening on {}", addr);
     axum::Server::bind(&addr)
@@ -35,43 +69,6 @@ async fn main() {
         .unwrap();
 }
 
-// basic handler that responds with a static string
-async fn root() -> &'static str {
-    "Hello, World!"
-}
-
-
-/// Hit endpoint with
-/// ```not_rust
-/// curl -X POST http://localhost:3000/users \
-///   -H 'Content-Type: application/json' \
-///   -d '{"username":"unused"}' 
-/// ```
-async fn create_user(
-    // this argument tells axum to parse the request body
-    // as JSON into a `CreateUser` type
-    Json(payload): Json<CreateUser>,
-) -> impl IntoResponse {
-    // insert your application logic here
-    let user = User {
-        id: 1337,
-        username: payload.username,
-    };
-
-    // this will be converted into a JSON response
-    // with a status code of `201 Created`
-    (StatusCode::CREATED, Json(user))
-}
-
-// the input to our `create_user` handler
-#[derive(Deserialize)]
-struct CreateUser {
-    username: String,
-}
-
-// the output to our `create_user` handler
-#[derive(Serialize)]
-struct User {
-    id: u64,
-    username: String,
+async fn handler() -> Html<&'static str> {
+    Html("<h1>Hello, World!</h1>")
 }
