@@ -1,64 +1,77 @@
 //! Run with
 //!
 //! ```not_rust
-//! cd examples && cargo run -p example-cors
+//! cd examples && cargo run -p example-readme
 //! ```
 
 use axum::{
-    http::{HeaderValue, Method},
-    response::{Html, IntoResponse},
-    routing::get,
+    http::StatusCode,
+    response::IntoResponse,
+    routing::{get, post},
     Json, Router,
 };
+use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
-use tower_http::cors::CorsLayer;
 
 #[tokio::main]
 async fn main() {
-    let frontend = async {
-        let app = Router::new().route("/", get(html));
-        serve(app, 3000).await;
-    };
+    // initialize tracing
+    tracing_subscriber::fmt::init();
 
-    let backend = async {
-        let app = Router::new().route("/json", get(json)).layer(
-            // see https://docs.rs/tower-http/latest/tower_http/cors/index.html
-            // for more details
-            //
-            // pay attention that for some request types like posting content-type: application/json
-            // it is required to add ".allow_headers([http::header::CONTENT_TYPE])"
-            // or see this issue https://github.com/tokio-rs/axum/issues/849
-            CorsLayer::new()
-                .allow_origin("http://localhost:3000".parse::<HeaderValue>().unwrap())
-                .allow_methods([Method::GET]),
-        );
-        serve(app, 4000).await;
-    };
+    // build our application with a route
+    let app = Router::new()
+        // `GET /` goes to `root`
+        .route("/", get(root))
+        // `POST /users` goes to `create_user`
+        .route("/users", post(create_user));
 
-    tokio::join!(frontend, backend);
-}
-
-async fn serve(app: Router, port: u16) {
-    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+    // run our app with hyper
+    // `axum::Server` is a re-export of `hyper::Server`
+    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+    tracing::debug!("listening on {}", addr);
     axum::Server::bind(&addr)
         .serve(app.into_make_service())
         .await
         .unwrap();
 }
 
-async fn html() -> impl IntoResponse {
-    Html(
-        r#"
-        <h1>Hello, World!</h1>
-        <script>
-            fetch('http://localhost:4000/json')
-              .then(response => response.json())
-              .then(data => console.log(data));
-        </script>
-        "#,
-    )
+// basic handler that responds with a static string
+async fn root() -> &'static str {
+    "Hello, World!"
 }
 
-async fn json() -> impl IntoResponse {
-    Json(vec!["one", "two", "three"])
+
+/// Hit endpoint with
+/// ```not_rust
+/// curl -X POST http://localhost:3000/users \
+///   -H 'Content-Type: application/json' \
+///   -d '{"username":"unused"}' 
+/// ```
+async fn create_user(
+    // this argument tells axum to parse the request body
+    // as JSON into a `CreateUser` type
+    Json(payload): Json<CreateUser>,
+) -> impl IntoResponse {
+    // insert your application logic here
+    let user = User {
+        id: 1337,
+        username: payload.username,
+    };
+
+    // this will be converted into a JSON response
+    // with a status code of `201 Created`
+    (StatusCode::CREATED, Json(user))
+}
+
+// the input to our `create_user` handler
+#[derive(Deserialize)]
+struct CreateUser {
+    username: String,
+}
+
+// the output to our `create_user` handler
+#[derive(Serialize)]
+struct User {
+    id: u64,
+    username: String,
 }
