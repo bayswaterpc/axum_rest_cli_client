@@ -1,5 +1,5 @@
 [package]
-name = "example-hello-world"
+name = "example-cors"
 version = "0.1.0"
 edition = "2021"
 publish = false
@@ -7,3 +7,4 @@ publish = false
 [dependencies]
 axum = "*"
 tokio = { version = "1.0", features = ["full"] }
+tower-http = { version = "0.3.0", features = ["cors"] }
