@@ -1,8 +1,6 @@
-use futures::join;
 use reqwest::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE};
-use reqwest::{self, Result};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use dotenv::dotenv;
 
 #[derive(Serialize, Deserialize, Debug)]
 struct ExternalUrls {
@@ -38,19 +36,15 @@ struct APIResponse {
     tracks: Items<Track>,
 }
 
-pub async fn make_requests() {
-    let fut1 = sub_function();
-    let fut2 = reade_me_printer();
-
-    join!(fut1, fut2);
-}
-
-async fn sub_function() {
+pub async fn spotify_request() {
+    dotenv().ok(); 
+    let spotify_bearer_token = std::env::var("SPOTIFY_BEARER_TOKEN").expect("Need SPOTIFY_BEARER_TOKEN env var");
+    let auothorization_str = format!("Bearer {}", spotify_bearer_token);
     // chaining .await will yield our query result
     let client = reqwest::Client::new();
     let response = client
         .get("https://api.spotify.com/v1/search")
-        .header(AUTHORIZATION, "Bearer BQAP-Mms-zZsJjMlz8hNp96qVtwOC548dwELqNvyqsdPTbB_huV8grThUiiqB68UmlDRaO-IKY9X7WrJsEx_zS7uE3amG5nNwaQprixA9j9QL5g261RnE1Cd_92aOl3NpkVYxcyFgPsJs45k8-wR2TfBjHbTyuqAT3MuCQU0ARul7T1dwD8wN8aEhu4Q4UBtIdQ")
+        .header(AUTHORIZATION, auothorization_str.as_str())
         .header(CONTENT_TYPE, "application/json")
         .header(ACCEPT, "application/json")
         // confirm the request using send()
@@ -81,17 +75,4 @@ async fn sub_function() {
             println!("Sending error {:#?}", err);
         }
     }
-}
-
-async fn reade_me_example() -> Result<HashMap<String, String>> {
-    // chaining .await will yield our query result
-    let resp = reqwest::get("https://httpbin.org/ip")
-        .await?
-        .json::<HashMap<String, String>>()
-        .await?;
-    Ok(resp)
-}
-
-async fn reade_me_printer() {
-    println!("{:#?}", reade_me_example().await);
 }
