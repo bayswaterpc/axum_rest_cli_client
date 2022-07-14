@@ -4,6 +4,7 @@ use clap::Parser;
 use common::{Pagination, PostTodo, Todo, UpdateTodo, TODOS_PATH};
 use std::ffi::OsString;
 use std::io;
+use uuid::Uuid;
 
 #[derive(clap::ValueEnum, Clone, Debug)]
 enum Request {
@@ -27,7 +28,7 @@ pub struct Args {
 
     /// Id used in patch & delete commands
     #[clap(long, value_parser, short, value_parser)]
-    id: Option<String>,
+    id: Option<Uuid>,
 
     /// json file with data.
     #[clap(long, short, value_parser)]
@@ -61,7 +62,7 @@ pub fn read_commands() -> Result<Args> {
 pub async fn run_cli() -> Result<()> {
    // if we want to read from executable invocation
    //let mut args = Args::parse(); 
-   
+
     println!("Enter REST request, run -h for help");
     let mut args = read_commands()?;
     while !args.quit {
@@ -76,6 +77,7 @@ pub async fn run_cli() -> Result<()> {
 }
 
 pub async fn cli_execute(args: Args) -> Result<()> {
+   let uri = &args.uri;
     match args.request {
         Request::HelloWorld => {
             let resp = get_root().await?;
@@ -85,7 +87,7 @@ pub async fn cli_execute(args: Args) -> Result<()> {
             if args.id.is_none() {
                 bail!("Id required for delete");
             }
-            let resp = delete_todo(&args.id.unwrap()).await;
+            let resp = delete_todo(uri, &args.id.unwrap()).await;
             println!("{:?} Response: {:?}", args.request, resp);
         }
         Request::Get => {
@@ -99,7 +101,7 @@ pub async fn cli_execute(args: Args) -> Result<()> {
                 let pg: Pagination = serde_json::from_str(file_contents.as_str())?;
                 pg
             };
-            let resp = get_todo(pagination).await;
+            let resp = get_todo(uri, pagination).await;
             println!("{:?} Response: {:?}", args.request, resp);
         }
         _ => {
@@ -111,12 +113,12 @@ pub async fn cli_execute(args: Args) -> Result<()> {
             match args.request {
                 Request::Post => {
                     let todo: PostTodo = serde_json::from_str(file_contents.as_str())?;
-                    let resp = post_todo(todo).await;
+                    let resp = post_todo(uri, todo).await;
                     println!("{:?} Response: {:?}", args.request, resp);
                 }
                 Request::Put => {
                     let todo: Todo = serde_json::from_str(file_contents.as_str())?;
-                    let resp = put_todo(todo).await;
+                    let resp = put_todo(uri, todo).await;
                     println!("{:?} Response: {:?}", args.request, resp);
                 }
                 Request::Patch => {
@@ -124,7 +126,7 @@ pub async fn cli_execute(args: Args) -> Result<()> {
                         bail!("Id required for patch");
                     }
                     let todo: UpdateTodo = serde_json::from_str(file_contents.as_str())?;
-                    let resp = patch_todo(&args.id.unwrap(), todo).await;
+                    let resp = patch_todo(uri, &args.id.unwrap(), todo).await;
                     println!("{:?} Response: {:?}", args.request, resp);
                 }
                 _ => panic!("unreachable"),
