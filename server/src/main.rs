@@ -21,7 +21,7 @@ use axum::{
     routing::{get, patch},
     Json, Router,
 };
-use serde::{Deserialize, Serialize};
+use common::{Pagination, PostTodo, Todo, UpdateTodo};
 use std::{
     collections::HashMap,
     net::SocketAddr,
@@ -77,13 +77,11 @@ async fn main() {
         .unwrap();
 }
 
-
-
-#[derive(Debug, Deserialize, Default)]
-pub struct Pagination {
-    pub offset: Option<usize>,
-    pub limit: Option<usize>,
-}
+// #[derive(Debug, Deserialize, Default)]
+// pub struct Pagination {
+//     pub offset: Option<usize>,
+//     pub limit: Option<usize>,
+// }
 
 /**
 Can access on the browser at
@@ -123,23 +121,19 @@ async fn root() -> &'static str {
     "Hello, World!"
 }
 
-#[derive(Debug, Deserialize)]
-struct CreateTodo {
-    text: String,
-}
-
 /**
 Run with curl
 ```not_rust
-curl -X PATCH http://localhost:3000/todos/:id \
+curl -X POST http://localhost:3000/todos\
    -H 'Content-Type: application/json' \
    -d '{"text":"do this"}'
 ```
 **/
 async fn todos_create(
-    Json(input): Json<CreateTodo>,
+    Json(input): Json<PostTodo>,
     Extension(db): Extension<Db>,
 ) -> impl IntoResponse {
+    tracing::debug!("todos_create {:?}", input);
     let todo = Todo {
         id: Uuid::new_v4(),
         text: input.text,
@@ -147,14 +141,7 @@ async fn todos_create(
     };
 
     db.write().unwrap().insert(todo.id, todo.clone());
-
     (StatusCode::CREATED, Json(todo))
-}
-
-#[derive(Debug, Deserialize)]
-struct UpdateTodo {
-    text: Option<String>,
-    completed: Option<bool>,
 }
 
 /**
@@ -190,8 +177,8 @@ async fn todos_update(
     Ok(Json(todo))
 }
 
-/** 
-Run with curl 
+/**
+Run with curl
 ```not_rust
 curl -X "DELETE" http://localhost:3000/todos/:id
 ```
@@ -205,10 +192,3 @@ async fn todos_delete(Path(id): Path<Uuid>, Extension(db): Extension<Db>) -> imp
 }
 
 type Db = Arc<RwLock<HashMap<Uuid, Todo>>>;
-
-#[derive(Debug, Serialize, Clone)]
-struct Todo {
-    id: Uuid,
-    text: String,
-    completed: bool,
-}

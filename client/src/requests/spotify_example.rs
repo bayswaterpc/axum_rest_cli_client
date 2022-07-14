@@ -1,6 +1,6 @@
+use dotenv::dotenv;
 use reqwest::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE};
 use serde::{Deserialize, Serialize};
-use dotenv::dotenv;
 
 #[derive(Serialize, Deserialize, Debug)]
 struct ExternalUrls {
@@ -37,8 +37,9 @@ struct APIResponse {
 }
 
 pub async fn spotify_request() {
-    dotenv().ok(); 
-    let spotify_bearer_token = std::env::var("SPOTIFY_BEARER_TOKEN").expect("Need SPOTIFY_BEARER_TOKEN env var");
+    dotenv().ok();
+    let spotify_bearer_token =
+        std::env::var("SPOTIFY_BEARER_TOKEN").expect("Need SPOTIFY_BEARER_TOKEN env var");
     let auothorization_str = format!("Bearer {}", spotify_bearer_token);
     // chaining .await will yield our query result
     let client = reqwest::Client::new();
