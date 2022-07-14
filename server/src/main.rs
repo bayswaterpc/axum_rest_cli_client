@@ -4,6 +4,7 @@
 //!
 //! - `GET /todos`: return a JSON list of Todos.
 //! - `POST /todos`: create a new Todo.
+//! - `PUT /todos`: create a new Todo with specified id & completed status
 //! - `PATCH /todos/:id`: update a specific Todo.
 //! - `DELETE /todos/:id`: delete a specific Todo.
 //!
@@ -48,7 +49,7 @@ async fn main() {
     // Compose the routes
     let app = Router::new()
         .route("/", get(root))
-        .route("/todos", get(todos_index).post(todos_create))
+        .route("/todos", get(todos_index).post(todos_create).put(todos_put))
         .route("/todos/:id", patch(todos_update).delete(todos_delete))
         // Add middleware to all routes
         .layer(
@@ -142,6 +143,20 @@ async fn todos_create(
 
     db.write().unwrap().insert(todo.id, todo.clone());
     (StatusCode::CREATED, Json(todo))
+}
+
+/**
+Run with curl
+```not_rust
+curl -X PUT http://localhost:3000/todos\
+   -H 'Content-Type: application/json' \
+   -d '{"id":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","text":"i put this","completed":true}'
+```
+**/
+async fn todos_put(Json(input): Json<Todo>, Extension(db): Extension<Db>) -> impl IntoResponse {
+    tracing::debug!("todos_put {:?}", input);
+    db.write().unwrap().insert(input.id, input.clone());
+    (StatusCode::CREATED, Json(input))
 }
 
 /**

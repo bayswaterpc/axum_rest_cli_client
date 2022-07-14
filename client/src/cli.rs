@@ -1,7 +1,7 @@
-use crate::requests::todos::{delete_todo, get_root, get_todo, patch_todo, post_todo};
+use crate::requests::todos::{delete_todo, get_root, get_todo, patch_todo, post_todo, put_todo};
 use anyhow::{bail, Context, Ok, Result};
 use clap::Parser;
-use common::{Pagination, PostTodo, UpdateTodo, TODOS_PATH};
+use common::{Pagination, PostTodo, Todo, UpdateTodo, TODOS_PATH};
 use std::ffi::OsString;
 use std::io;
 
@@ -59,6 +59,9 @@ pub fn read_commands() -> Result<Args> {
 }
 
 pub async fn run_cli() -> Result<()> {
+   // if we want to read from executable invocation
+   //let mut args = Args::parse(); 
+   
     println!("Enter REST request, run -h for help");
     let mut args = read_commands()?;
     while !args.quit {
@@ -111,7 +114,11 @@ pub async fn cli_execute(args: Args) -> Result<()> {
                     let resp = post_todo(todo).await;
                     println!("{:?} Response: {:?}", args.request, resp);
                 }
-                Request::Put => {}
+                Request::Put => {
+                    let todo: Todo = serde_json::from_str(file_contents.as_str())?;
+                    let resp = put_todo(todo).await;
+                    println!("{:?} Response: {:?}", args.request, resp);
+                }
                 Request::Patch => {
                     if args.id.is_none() {
                         bail!("Id required for patch");

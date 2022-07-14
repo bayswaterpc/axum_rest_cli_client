@@ -38,11 +38,6 @@ pub struct PostTodo {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct PutTodo {
-    pub text: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
 pub struct UpdateTodo {
     pub text: Option<String>,
     pub completed: Option<bool>,

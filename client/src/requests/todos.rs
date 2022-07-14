@@ -32,6 +32,26 @@ pub async fn get_todo(params: Pagination) -> Result<Vec<Todo>> {
     Ok(todos)
 }
 
+pub async fn put_todo(params: Todo) -> Result<Todo> {
+    let url = "http://localhost:3000/todos";
+
+    let json_str = serde_json::to_string(&params).unwrap_or_default();
+    println!("{}", json_str);
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .put(url)
+        .header(CONTENT_TYPE, "application/json")
+        .body(json_str)
+        .send()
+        .await?
+        .text()
+        .await?;
+
+    let todo: Todo = serde_json::from_str(&resp).expect("Invalid Response");
+    Ok(todo)
+}
+
 pub async fn patch_todo(id: &String, params: UpdateTodo) -> Result<Todo> {
     let patch_url = format!("http://localhost:3000/todos/{}", id);
 
