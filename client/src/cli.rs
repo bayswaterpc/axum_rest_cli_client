@@ -1,4 +1,4 @@
-use crate::requests::todos::{delete_todo, get_todo, patch_todo, post_todo};
+use crate::requests::todos::{delete_todo, get_root, get_todo, patch_todo, post_todo};
 use anyhow::{bail, Context, Ok, Result};
 use clap::Parser;
 use common::{Pagination, PostTodo, UpdateTodo, TODOS_PATH};
@@ -12,6 +12,7 @@ enum Request {
     Patch,
     Get,
     Delete,
+    HelloWorld,
 }
 
 #[derive(Parser, Debug)]
@@ -53,19 +54,19 @@ pub fn read_commands() -> Result<Args> {
     io::stdin().read_line(&mut buffer)?;
     let strings = string_to_args(&buffer);
     let args = Args::try_parse_from(strings.iter())?;
-   //  print!("read_commands args {:?}", args);
+    //  print!("read_commands args {:?}", args);
     Ok(args)
 }
 
 pub async fn run_cli() -> Result<()> {
-   println!("Enter REST request, run -h for help");
+    println!("Enter REST request, run -h for help");
     let mut args = read_commands()?;
     while !args.quit {
         cli_execute(args)
             .await
             .with_context(|| "command execution error".to_string())?;
 
-         println!("Run another command, enter '-q' to quit");
+        println!("Run another command, enter '-q' to quit");
         args = read_commands()?;
     }
     Ok(())
@@ -73,12 +74,16 @@ pub async fn run_cli() -> Result<()> {
 
 pub async fn cli_execute(args: Args) -> Result<()> {
     match args.request {
+        Request::HelloWorld => {
+            let resp = get_root().await?;
+            println!("{:?} Response: {:?}", args.request, resp);
+        }
         Request::Delete => {
             if args.id.is_none() {
                 bail!("Id required for delete");
             }
             let resp = delete_todo(&args.id.unwrap()).await;
-            println!("{:?}: resp {:?}", args.request, resp);
+            println!("{:?} Response: {:?}", args.request, resp);
         }
         Request::Get => {
             let pagination = if args.file.is_none() {
@@ -92,7 +97,7 @@ pub async fn cli_execute(args: Args) -> Result<()> {
                 pg
             };
             let resp = get_todo(pagination).await;
-            println!("{:?}: resp {:?}", args.request, resp);
+            println!("{:?} Response: {:?}", args.request, resp);
         }
         _ => {
             if args.file.is_none() {
@@ -104,7 +109,7 @@ pub async fn cli_execute(args: Args) -> Result<()> {
                 Request::Post => {
                     let todo: PostTodo = serde_json::from_str(file_contents.as_str())?;
                     let resp = post_todo(todo).await;
-                    println!("{:?}: resp {:?}", args.request, resp);
+                    println!("{:?} Response: {:?}", args.request, resp);
                 }
                 Request::Put => {}
                 Request::Patch => {
@@ -113,7 +118,7 @@ pub async fn cli_execute(args: Args) -> Result<()> {
                     }
                     let todo: UpdateTodo = serde_json::from_str(file_contents.as_str())?;
                     let resp = patch_todo(&args.id.unwrap(), todo).await;
-                    println!("{:?}: resp {:?}", args.request, resp);
+                    println!("{:?} Response: {:?}", args.request, resp);
                 }
                 _ => panic!("unreachable"),
             }

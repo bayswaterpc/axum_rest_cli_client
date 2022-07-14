@@ -12,7 +12,6 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-
 /* TODO setup crate level integration test
 
 let root = get_root().await;
