@@ -27,7 +27,6 @@ pub async fn post_todo(todo: PostTodo) -> Result<Todo> {
 
 pub async fn get_todo(params: Pagination) -> Result<Vec<Todo>> {
     let get_url = params.make_query_uri("http://localhost:3000/todos".to_string());
-    println!("get_url {}", get_url);
     let resp = reqwest::get(get_url).await?.text().await?;
     let todos: Vec<Todo> = serde_json::from_str(&resp).expect("Invalid Response");
     Ok(todos)
