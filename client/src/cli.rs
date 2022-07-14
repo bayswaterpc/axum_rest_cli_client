@@ -60,8 +60,8 @@ pub fn read_commands() -> Result<Args> {
 }
 
 pub async fn run_cli() -> Result<()> {
-   // if we want to read from executable invocation
-   //let mut args = Args::parse(); 
+    // if we want to read from executable invocation
+    //let mut args = Args::parse();
 
     println!("Enter REST request, run -h for help");
     let mut args = read_commands()?;
@@ -77,7 +77,7 @@ pub async fn run_cli() -> Result<()> {
 }
 
 pub async fn cli_execute(args: Args) -> Result<()> {
-   let uri = &args.uri;
+    let uri = &args.uri;
     match args.request {
         Request::HelloWorld => {
             let resp = get_root().await?;

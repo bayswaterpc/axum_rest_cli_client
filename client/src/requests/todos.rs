@@ -51,7 +51,7 @@ pub async fn put_todo(uri: &str, params: Todo) -> Result<Todo> {
     Ok(todo)
 }
 
-pub async fn patch_todo(uri:&str, id: &Uuid, params: UpdateTodo) -> Result<Todo> {
+pub async fn patch_todo(uri: &str, id: &Uuid, params: UpdateTodo) -> Result<Todo> {
     let patch_uri = format!("{}/{}", uri, id);
 
     let json_str = serde_json::to_string(&params).unwrap_or_default();
@@ -71,7 +71,7 @@ pub async fn patch_todo(uri:&str, id: &Uuid, params: UpdateTodo) -> Result<Todo>
     Ok(todo)
 }
 
-pub async fn delete_todo(uri:&str, id: &Uuid) -> Result<StatusCode> {
+pub async fn delete_todo(uri: &str, id: &Uuid) -> Result<StatusCode> {
     let delete_uri = format!("{}/{}", uri, id);
 
     let client = reqwest::Client::new();
